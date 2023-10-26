@@ -1,15 +1,15 @@
-import { account } from "@/appwrite";
-import { CarGallery } from "@/components/CarGallery";
-import { Models } from "appwrite";
+import { account, storage } from "@/appwrite";
+import { AppwriteException, Models } from "appwrite";
 import React, { useEffect, useState } from "react";
 
 export default function Gallery() {
-  const [userData, setUserData] = useState<Models.User<Models.Preferences>>();
+  const [imageFiles, setImageFiles] = useState<Models.File[]>([]);
+  const [errorCode, setErrorCode] = useState<number>();
+
   useEffect(() => {
     (async () => {
       try {
-        const userData = await account.get();
-        setUserData(userData)
+        await account.get();
       }
       catch (e) {
         await account.createAnonymousSession();
@@ -17,40 +17,38 @@ export default function Gallery() {
     })()
   }, [])
 
-  const handleUserSubscription = async () => {
-    try {
-      const response = await fetch(`/api/updateLabels`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ id: userData?.$id })
-      })
-      if (response.ok) {
-        const userData = await response.json();
-        setUserData(userData);
+  useEffect(() => {
+    const getCarImages = async () => {
+      try {
+        const fileList = await storage.listFiles(process.env.BUCKET_ID!);;
+        setImageFiles(fileList.files);
       }
-      else {
-        console.log(response.statusText);
+      catch (error: any) {
+        if (error instanceof AppwriteException) {
+          setErrorCode(error.code);
+        }
       }
-    } catch (error) {
-      console.log(error)
     }
-  }
+    getCarImages();
+  }, [])
 
-  if (userData?.labels && !userData.labels.includes('subscriber')) {
+  const images = imageFiles?.map(x => {
+    const imagePreview = storage.getFilePreview(x.bucketId, x.$id);
     return (
-      <div className="flex h-full flex-col justify-center items-center">
-        <p className="text-2xl mb-5 font-bold"> You do not have access to view this page</p>
-        <button className="bg-fuchsia-200" onClick={handleUserSubscription}>Click to subscribe</button>
-      </div>
+      <li key={imagePreview.href} className="mt-4"><img src={imagePreview.href} width="256" className="h-40" /></li>
     )
-  }
-  else {
-    return (
-      <div className="m-auto">
-        <CarGallery />
-      </div>
-    )
-  }
+  });
+
+  return (
+    <>
+      {images &&
+        <ul className="flex flex-wrap">{images}</ul>
+      }
+      {errorCode === 401 &&
+        (<div className="flex h-full flex-col justify-center items-center">
+          <h1 className="text-4xl mb-5 font-bold"> You are not subscribed</h1>
+        </div>
+        )}
+    </>
+  )
 }
